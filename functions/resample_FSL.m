@@ -1,5 +1,8 @@
-function resample_FSL(in_file,out_file,varargin)
-%
+function resample_FSL(in_files,out_files,varargin)
+% resample_FSL(in_file,out_file,varargin)
+% 
+% Using FSL, resample space of brain data (in_file). 
+% 
 
 vox_size = 4;
 do_verbose = true;
@@ -30,19 +33,19 @@ path(path, fsldirmpath);
 clear fsldir fsldirmpath; 
 %% check input
 % variable type
-if ~iscell(in_file) && ~iscell(out_file)
-    in_file{1} = in_file;
-    out_file{1} = out_file;
-elseif (~iscell(in_file) && iscell(out_file)) || (iscell(in_file) && ~iscell(out_file))
+if ~iscell(in_files) && ~iscell(out_files)
+    in_file{1} = in_files;
+    out_file{1} = out_files;
+elseif (~iscell(in_files) && iscell(out_files)) || (iscell(in_files) && ~iscell(out_files))
     error('in_file and out_files are not same, check the variables types')
 else
-    in_file = in_file;
-    out_file = out_file;
+    in_file = in_files;
+    out_file = out_files;
 end
 % comparing input and output name
 id_idx1 = []; id_idx2 = [];
-for file_i = 1:numesl(in_file)
-    for file_ii = 1:numesl(out_file)
+for file_i = 1:numel(in_file)
+    for file_ii = 1:numel(out_file)
         if strcmp(in_file{file_i}, out_file{file_ii})
             id_idx1 = [id_idx1 file_i];
             id_idx2 = [id_idx2 file_i];
