@@ -1,74 +1,46 @@
+
+%% SIMPLE PREPROCESS FOR MUTLI-ECHO IMAGES 
 clear; close;
 %% SET PATH
 username = char(java.lang.System.getProperty('user.name'));
 project_name = 'sync_SEP';
 basedir = ['/Users/' username sprintf('/Dropbox/Projects/%s',project_name)];
 addpath(genpath(basedir)); % add path
-% JJ
-% datdir = fullfile(basedir, 'data','coil_test','JJ_JJ_face_test_with_distortion_correction','COCOAN_SUHWAN_GIM_20210708_195321_871000');
-% niiFolder = fullfile(basedir,'data','coil_test','JJ_JJ_face_test_with_distortion_correction','results_nii');
-% Jihoon
-datdir = fullfile(basedir, 'data','coil_test','JIHOON_JIHOON','COCOAN_SUHWAN_GIM_20210726_130239_993000');
-niiFolder = fullfile(basedir,'data','coil_test','JIHOON_JIHOON','results_nii');
+%%
+datdir = fullfile(basedir, 'data','coil_test','20210803_multi_echo','COCOAN_SUHWAN_GIM_20210803_111531_408000');
+%datdir = fullfile(basedir, 'data','coil_test','20210803_multi_echo_JJ','COCOAN_SUHWAN_GIM_20210803_093830_891000');
+niiFolder = fullfile(basedir,'data','coil_test','20210803_multi_echo','preprocessed');
+%niiFolder = fullfile(basedir,'data','coil_test','20210803_multi_echo_JJ','preprocessed');
 
-% ME (July 26)
-datdir = fullfile(basedir, 'data','coil_test','20210726_ME','COCOAN_SUHWAN_GIM_20210726_130239_993000');
-niiFolder = fullfile(basedir,'data','coil_test','20210726_ME','results_nii');
+%mkdir(niiFolder)
+%niiFolder = fullfile(basedir,'data','coil_test','20210803_multi_echo','results_nii');
 
 dcmSource = filenames(fullfile(datdir,'*'));
 %% DICOM 2 NIIFT 
+% dcm2niix /Users/suhwan/Dropbox/Projects/sync_SEP/data/coil_test/20210803_multi_echo/COCOAN_SUHWAN_GIM_20210803_111531_408000/1_2_3ME_HALF_CMRR_2_7ISO_PA_64CH+FLEX_MB4_IA2_0
 for i = 1:length(dcmSource)
-    if ~contains(dcmSource{i},'_unused')
-        
-        if contains(dcmSource{i},'T1_')
-            [~,b] = fileparts(dcmSource{i});
-            outputfold = fullfile(niiFolder,b);
-            dicm2nii(dcmSource{i}, outputfold , 4);
-        elseif contains(dcmSource{i},'AAHEAD')
-            % do nothing
-        elseif contains(dcmSource{i}, 'LOCALIZER')
-        else
-            [~,b] = fileparts(dcmSource{i});
-            outputfold = fullfile(niiFolder,b);
-            dicm2nii(dcmSource{i}, outputfold , 4);
-            out = load(fullfile(outputfold, 'dcmHeaders.mat'));
-            f = fields(out.h);
-            %
-            
-            %cd(outputfold);
-            
-            nifti_3d = filenames(fullfile(outputfold,[f{1} '*.nii']));
-            if contains(dcmSource{i},'SBREF_') | contains(dcmSource{i},'DISTORTION')
-                disdaq = 0;
-            else
-                disdaq = 18;
-            end
-            
-            disp('Converting 3d images to 4d images...');
-            output_4d_fnames = fullfile(outputfold, sprintf('%s_4D.nii',f{1}));
-            spm_file_merge(nifti_3d((disdaq+1):end), output_4d_fnames);
-            
-            %system(['cd ' outputfold '; rm ' f{1} '*nii']);
-            %system(['cd ' outputfold '; rm ' nifti_3d]);
-            delete(nifti_3d{:})
-            
-        end
-        %dicm2nii(dcmSource{i}, niiFolder, 4);
-        
-    end
+    %addpath    
+    [~,b] = fileparts(dcmSource{i});
+    outputdir = fullfile(niiFolder,b);
+    if ~isfolder(outputdir); mkdir(outputdir); end
+    system(sprintf('/usr/local/bin/dcm2niix -o %s -z n %s ',outputdir,dcmSource{i})); % no compress images     
+    %1. should be saved using diary
+    %2. recommed to save .mat files using json outputs
 end
 %% SIMPLE PREPROC
 %
 mask = []; dat = []; 
 spike_covariates =[]; 
 func_bold_files = []; 
-func_bold_files = filenames(fullfile(niiFolder,'*CMRR_2*','*CMRR*mb4_4D.nii'));
+%func_bold_files = filenames(fullfile(niiFolder,'*CMRR_2*','*CMRR*mb4_4D.nii'));
+func_bold_files = filenames(fullfile(niiFolder,'*MB*00*','2*.nii'));
+func_bold_files(contains(func_bold_files,'SBREF')) = []; 
 for i = 1:length(func_bold_files)
     clf;
     [a,b]=fileparts(func_bold_files{i});    
     % implicit_mask
     [~, ~, ~, ~, outputname] = fmri_mask_thresh_canlab(char(func_bold_files{i}),...
-        fullfile(a, 'implicit_mask.nii'));
+        fullfile(a, sprintf('implicit_mask_%02d.nii',i)));
     implicit_mask_file = outputname;
     mask{i}= fmri_data(implicit_mask_file,implicit_mask_file);
     dat{i} = fmri_data(func_bold_files{i}, implicit_mask_file);
@@ -86,15 +58,27 @@ for i = 1:length(func_bold_files)
     spike_covariates{i} = dat{i}.covariates;
 end
 %% Slice time correction 
-tr = 1; 
-mbf = 4;
+%tr = 1; 
+%mbf = 4;
 
-for i = 1:length(func_bold_files)
+% func_json_files = filenames(fullfile(datdir, '*MB*00*','*.json'));
+% func_json_files (contains(func_json_files ,'SBREF')) = []; 
+for i = 1:length(func_bold_files)    
     slice_timing_job = []; 
-    [a,b] = fileparts(func_bold_files{i});
-    dicomheader = load(fullfile(a,'dcmHeaders.mat'));
-    f = fields(dicomheader.h);
-    eval(['slice_time = dicomheader.h.' f{1} '.MosaicRefAcqTimes;']);    
+    json_read = []; json_file = []; 
+    % Read Json file 
+    [a,b] = fileparts(func_bold_files{i});        
+    json_file = fullfile(a,[b '.json']);
+    fid = fopen(json_file);
+    raw = fread(fid, inf); 
+    str = char(raw');
+    fclose(fid); 
+    json_read = jsondecode(str);
+    
+    % set parameter 
+    slice_time = json_read.SliceTiming;
+    tr = json_read.RepetitionTime;
+    mbf = json_read.MultibandAccelerationFactor;
     %% DATA
     slice_timing_job{1}.spm.temporal.st.scans{1} = spm_select('expand', func_bold_files(i)); % individual 4d images in cell str
     %% 1. nslices
@@ -108,10 +92,13 @@ for i = 1:length(func_bold_files)
     %% 4. so: Slice order
     
     slice_timing_job{1}.spm.temporal.st.so = slice_time;
-    if ~exist('custom_slice_timing', 'var')
-        slice_timing_job{1}.spm.temporal.st.refslice = find(slice_time==0, 1, 'first');
-    else
-        slice_timing_job{1}.spm.temporal.st.refslice = find(slice_time==min(slice_time), 1, 'first');
+%     if ~exist('custom_slice_timing', 'var')
+%         slice_timing_job{1}.spm.temporal.st.refslice = find(slice_time==0, 1, 'first');
+%     else
+%         slice_timing_job{1}.spm.temporal.st.refslice = find(slice_time==min(slice_time), 1, 'first');
+%     end
+    if min(slice_time) >= 0 && max(slice_time) <= tr % Time-based
+        slice_timing_job{1}.spm.temporal.st.refslice = min(slice_time);
     end
     slice_timing_job{1}.spm.temporal.st.prefix = 'a';
     
@@ -124,10 +111,24 @@ for i = 1:length(func_bold_files)
     %spm_jobman('interactive', slice_timing_job);
     
 end
+%% Check the affine matrix (?)
+temp_t = [];
+for i =1:4
+    %temp_t{i} = spm_vol([func_bold_files{i} ',2']); % raw images
+    temp_t{i} = spm_vol([afunc_bold_files{i} ',2']); % after slice-timing correction 
+    %temp_t{i} = spm_vol([rafunc_bold_files{i} ',2']); % after realinment
+end
 %% Motion correction 
+% The consensus is to do 1) estimate realigment parameter using
+% before-slice timing correction images and 2) alignment using after-slice
+% timing correction images
+%
 adat = []; 
-afunc_bold_files = filenames(fullfile(niiFolder,'*CMRR_2*','a*CMRR*mb4_4D.nii'));
-sbref_bold_files = filenames(fullfile(niiFolder,'*CMRR_2*','*CMRR*mb4_SBRef_4D.nii'));
+afunc_bold_files = filenames(fullfile(niiFolder,'*MB*00*','a*.nii'));
+afunc_bold_files(contains(afunc_bold_files,'SBREF')) = []; 
+temp_files = filenames(fullfile(niiFolder,'*MB*00*','*.nii'));
+temp_files(~contains(temp_files,'SBREF')) = []; 
+sbref_bold_files = temp_files; temp_files = []; 
 for i = 1:length(afunc_bold_files)
     def = spm_get_defaults('realign');
     matlabbatch = {};
@@ -137,6 +138,7 @@ for i = 1:length(afunc_bold_files)
     % change a couple things
     matlabbatch{1}.spm.spatial.realign.estwrite.eoptions.rtm = 0; % do not register to mean (twice as long)
     matlabbatch{1}.spm.spatial.realign.estwrite.roptions.mask = 0; % do not mask (will set data to zero at edges!)
+    matlabbatch{1}.spm.spatial.realign.estwrite.roptions.which = [2 0]; % do not output mean image
     
     data = []; data_all = []; 
     data = afunc_bold_files(i);
@@ -149,31 +151,58 @@ for i = 1:length(afunc_bold_files)
     spm_jobman('run', {matlabbatch});
     %adat{i} = fmri_data(afunc_bold_files{i},mask{i}.fullpath);
 end
-%% Distortion correction 
+%% ========================================================================
+%                        Do run TEDANA for ME-EPI images (only one image)
+% =========================================================================
+if sum(contains(afunc_bold_files, '3ME')) > 1
+    temp_3ME=afunc_bold_files(contains(afunc_bold_files, '3ME'));
+    [a,b] = fileparts(temp_3ME{1});
+    combined_bold_files = fullfile(a,'t2smap_outputs','desc-optcom_bold.nii'); %from T2S_workflow in tedana    
+    if ~isfile(combined_bold_files) 
+        gunzip(fullfile(a,'t2smap_outputs','desc-optcom_bold.nii.gz')); %from T2S_workflow in tedana    
+    end    
+end
+%     ==========================    =================================================
+%     Filename                      Content
+%     ==========================    =================================================
+%     T2starmap.nii.gz              Limited estimated T2* 3D map or 4D timeseries.
+%                                   Will be a 3D map if ``fitmode`` is 'all' and a
+%                                   4D timeseries if it is 'ts'.
+%     S0map.nii.gz                  Limited S0 3D map or 4D timeseries.
+%     desc-full_T2starmap.nii.gz    Full T2* map/timeseries. The difference between
+%                                   the limited and full maps is that, for voxels
+%                                   affected by dropout where only one echo contains
+%                                   good data, the full map uses the single echo's
+%                                   value while the limited map has a NaN.
+%     desc-full_S0map.nii.gz        Full S0 map/timeseries.
+%     desc-optcom_bold.nii.gz       Optimally combined timeseries.
+%    ==========================    =================================================
+%% AFTER TEDANA
+% Distortion correction 
 %% add fsl path 
 setenv('PATH', [getenv('PATH') ':/usr/local/fsl/bin']);
 setenv('FSLOUTPUTTYPE','NIFTI_GZ');
 
-distort_pa_dat = fullfile(niiFolder,'DISTORTION_CORR_64CH_PA_0002','distortion_corr_64ch_pa_4D.nii');
-distort_ap_dat = fullfile(niiFolder,'DISTORTION_CORR_64CH_PA_POLARITY_INVERT_TO_AP_0003','distortion_corr_64ch_pa_polarity_invert_to_ap_4D.nii');
-dicomheader_files = filenames(fullfile(niiFolder,'*CMRR_2*MB4_00*','dcmHeaders.mat'));
-rafunc_bold_files = filenames(fullfile(niiFolder,'*CMRR_2*','ra*CMRR*mb4_4D.nii'));
+distort_pa_dat = fullfile(datdir,'DISTORTION_CORR_64CH_PA_HALF_0002','20210803111531_distortion_corr_64ch_pa_half_2a.nii');
+distort_ap_dat = fullfile(datdir,'DISTORTION_CORR_64CH_PA_POLARITY_INVERT_TO_AP_HALF_0003','20210803111531_distortion_corr_64ch_pa_polarity_invert_to_ap_half_3a.nii');
+%dicomheader_files = filenames(fullfile(niiFolder,'*CMRR_2*MB4_00*','dcmHeaders.mat'));
+rafunc_bold_files = []; 
+rafunc_bold_files = filenames(fullfile(niiFolder,'*MB*00*','ra*.nii'));
+rafunc_bold_files(contains(rafunc_bold_files,'SBREF')) = []; 
+
+rafunc_bold_files = {rafunc_bold_files{1}; combined_bold_files};
+
 epi_enc_dir = 'pa';
 distortion_correction_out = fullfile(niiFolder, 'Distortion_combied','dc_combined.nii');
 %system(['fslmerge -t ', distortion_correction_out, ' ', distort_ap_dat, ' ', distort_pa_dat]);
 system(['fslmerge -t ', distortion_correction_out, ' ', distort_pa_dat, ' ', distort_ap_dat]);
-
-
 %%
-for i = 1:length(rafunc_bold_files) 
-    % calculate and write the distortion correction parameter
+distort_info = nifti(distort_ap_dat);
+distort_num = distort_info.dat.dim(4);
 
-    dicomheader = load(dicomheader_files{i});
-    %readout_time = dicomheader.h.CMRR_2_7iso_ap_64ch_Flex_mb4.ReadoutSeconds;
-    eval(sprintf('readout_time = dicomheader.h.%s.ReadoutSeconds;',char(fieldnames(dicomheader.h))));
-    distort_info = nifti(distort_ap_dat);
-    distort_num = distort_info.dat.dim(4);
-
+rdtime = [0.0397 0.0198]; % manually exported from Json files .TotalReaduoutTime; Three echo files' are same 
+for i = 1:length(rafunc_bold_files)     
+    readout_time = rdtime(i);
     [a,~ ] = fileparts(rafunc_bold_files{i});
     dc_param = fullfile(a, ['dc_param_', epi_enc_dir, '.txt']);    
     fileID = fopen(dc_param, 'w');
@@ -224,19 +253,19 @@ for i = 1:length(rafunc_bold_files)
     system(['gzip -d -f ' dcr_func_bold_files{i} '.gz']);
     
     
-    %% Applying topup on SBREF files
-    input_dat = sbref_bold_files{i};
-    [a, b] = fileparts(input_dat);
-    dc_func_sbref_files{i,1} = fullfile(a, ['dc_' b '.nii']);
-    system(['applytopup --imain=', input_dat, ' --inindex=1 --topup=', topup_out, ' --datain=', dc_param, ...
-        ' --method=jac --interp=spline --out=', dc_func_sbref_files{i}]);
-    
-    % removing spline interpolation neg values by absolute
-    system(['fslmaths ', dc_func_sbref_files{i}, ' -abs ', dc_func_sbref_files{i}]);
-    
-    % unzip
-    system(['gzip -d -f ' dc_func_sbref_files{i} '.gz']);
-    % system(['gzip -d ' PREPROC.dc_func_sbref_files{i} '.gz']);
+%     %% Applying topup on SBREF files
+%     input_dat = sbref_bold_files{i};
+%     [a, b] = fileparts(input_dat);
+%     dc_func_sbref_files{i,1} = fullfile(a, ['dc_' b '.nii']);
+%     system(['applytopup --imain=', input_dat, ' --inindex=1 --topup=', topup_out, ' --datain=', dc_param, ...
+%         ' --method=jac --interp=spline --out=', dc_func_sbref_files{i}]);
+%     
+%     % removing spline interpolation neg values by absolute
+%     system(['fslmaths ', dc_func_sbref_files{i}, ' -abs ', dc_func_sbref_files{i}]);
+%     
+%     % unzip
+%     system(['gzip -d -f ' dc_func_sbref_files{i} '.gz']);
+%     % system(['gzip -d ' PREPROC.dc_func_sbref_files{i} '.gz']);
     
     %% save mean image across all runs
     dat = fmri_data(char(dcr_func_bold_files{i}), implicit_mask_file);
@@ -250,24 +279,27 @@ for i = 1:length(rafunc_bold_files)
     end
     %% save mean_r_func_bold_png
     
-    mean_dcr_func_bold_png = fullfile(a, 'mean_dcr_func_bold.png'); % Scott added some lines to actually save the spike images
-    canlab_preproc_show_montage( mdat.fullpath , mean_dcr_func_bold_png);
-    drawnow;
+%     mean_dcr_func_bold_png = fullfile(a, 'mean_dcr_func_bold.png'); % Scott added some lines to actually save the spike images
+%     canlab_preproc_show_montage( mdat.fullpath , mean_dcr_func_bold_png);
+%     drawnow;
     
     
 end
 
 %% Coregi
 use_dc = true;
-use_sbref = true;
-dcrafunc_bold_files = filenames(fullfile(niiFolder,'*CMRR_2*','dcra*CMRR*mb4_4D.nii'));
-dcrafunc_sbref_files = filenames(fullfile(niiFolder,'*CMRR_2*','dc_*CMRR*mb4_SBRef_4D.nii'));
-t1_files = fullfile(niiFolder, 'T1_MPRAGE_SAG_0_7ISO_0012','T1_mprage_sag_0_7iso.nii');
+%use_sbref = true;
+dcrafunc_bold_files = []; 
+%dcrafunc_sbref_files = filenames(fullfile(niiFolder,'*CMRR_2*','dc_*CMRR*mb4_SBRef_4D.nii'));
+t1_files = fullfile(niiFolder, 'T1_MPRAGE_SAG_0_7ISO_0009','20180213181554_T1_mprage_sag_0.7iso_9.nii');
 %t1_files = '/Users/suhwan/Dropbox/Projects/sync_SEP/data/coil_test/JIHOON2_JIHOON2/results_nii/T1_MPRAGE_SAG_0_7ISO_0008/T1_mprage_sag_0_7iso.nii'; % 64-ch full coil
-for i = 1:length(dcrafunc_bold_files)
+for i = 1:length(rafunc_bold_files)
+    [a,b,c] = fileparts(rafunc_bold_files{i});
+    dcrafunc_bold_files{i} = fullfile(a,['dc' b c]);
     matlabbatch = []; 
     def = spm_get_defaults('coreg');
-    matlabbatch{1}.spm.spatial.coreg.estimate.ref = dcrafunc_sbref_files(i);
+    %matlabbatch{1}.spm.spatial.coreg.estimate.ref = dcrafunc_sbref_files(i);
+    matlabbatch{1}.spm.spatial.coreg.estimate.ref = {[dcrafunc_bold_files{1} ',1']};
     matlabbatch{1}.spm.spatial.coreg.estimate.source = {t1_files};
     matlabbatch{1}.spm.spatial.coreg.estimate.eoptions = def.estimate;
     spm('defaults','fmri');
@@ -275,7 +307,7 @@ for i = 1:length(dcrafunc_bold_files)
     spm_jobman('run', {matlabbatch});
     
 end
-spm_check_registration(t1_files, dcrafunc_sbref_files{i});
+%spm_check_registration(t1_files, dcrafunc_sbref_files{i});
 %% Normalization
 matlabbatch = [];
 
@@ -291,7 +323,7 @@ matlabbatch{1}.spm.spatial.preproc.channel.vols{1} = t1_files;
 deformation_nii = fullfile(b, ['y_' c '.nii']);
 matlabbatch{2}.spm.spatial.normalise.write.subj.def = {deformation_nii};
 % use dc
-matlabbatch{2}.spm.spatial.normalise.write.subj.resample = dcrafunc_bold_files;
+matlabbatch{2}.spm.spatial.normalise.write.subj.resample = dcrafunc_bold_files';
 
 matlabbatch{2}.spm.spatial.normalise.write.woptions.bb = [-78  -112   -70
     78    76    85];
@@ -325,21 +357,34 @@ wdcrafunc_bold_files = filenames(fullfile(niiFolder,'*CMRR_2*','wdcra*CMRR*mb4_4
 spm_check_registration(which('gray_matter_mask.nii'), [wdcrafunc_bold_files{1} ',1']);
 
 %% Smoothing
+wdcrafunc_bold_files = []; 
+for i = 1:2
+    [a,b,c] = deal([]);
+    [a,b,c] = fileparts(rafunc_bold_files{i});
+    wdcrafunc_bold_files{i} = fullfile(a,['wdc' b c]);
+end
 fwhm = 5; % default fwhm
-wdcrafunc_bold_files = filenames(fullfile(niiFolder,'*CMRR_2*','wdcra*CMRR*mb4_4D.nii'));
+%wdcrafunc_bold_files = filenames(fullfile(niiFolder,'*CMRR_2*','wdcra*CMRR*mb4_4D.nii'));
 matlabbatch = {};
 matlabbatch{1}.spm.spatial.smooth.prefix = 's';
 matlabbatch{1}.spm.spatial.smooth.dtype = 0; % data type; 0 = same as before
 matlabbatch{1}.spm.spatial.smooth.im = 0; % implicit mask; 0 = no
 matlabbatch{1}.spm.spatial.smooth.fwhm = repmat(fwhm, 1, 3); % override whatever the defaults were with this
-matlabbatch{1}.spm.spatial.smooth.data = wdcrafunc_bold_files;
+matlabbatch{1}.spm.spatial.smooth.data = wdcrafunc_bold_files';
 run_num = [];
 
 spm('defaults','fmri');
 spm_jobman('initcfg');
 spm_jobman('run', matlabbatch);
 %%
-swdcrafunc_bold_files = filenames(fullfile(niiFolder,'*CMRR_2*','swdcra*CMRR*mb4_4D.nii'));
+swdcrafunc_bold_files = []; 
+for i = 1:2
+    [a,b,c] = deal([]);
+    [a,b,c] = fileparts(rafunc_bold_files{i});
+    swdcrafunc_bold_files{i} = fullfile(a,['swdc' b c]);
+end
+%swdcrafunc_bold_files = filenames(fullfile(niiFolder,'*CMRR_2*','swdcra*CMRR*mb4_4D.nii'));
 temp_dat = fmri_data(swdcrafunc_bold_files{1},which('gray_matter_mask.nii'));
+temp_dat2 = fmri_data(swdcrafunc_bold_files{2},which('gray_matter_mask.nii'));
 
 %%
