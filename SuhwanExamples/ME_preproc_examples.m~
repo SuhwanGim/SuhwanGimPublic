@@ -169,10 +169,6 @@ end
 %     desc-optcom_bold.nii.gz           Optimally combined timeseries. 
 %     desc-optcomDenoised_bold.nii.gz   (Recommended) Denoised & optimally combined time series. 
 %     ===============================   =================================================
-
-% ======================================================================
-% you can access your denoised results 
-% -> https://rica-fmri.netlify.app
 %%
 combined_bold_files1 = [];
 combined_bold_files2 = []; 
@@ -193,10 +189,7 @@ if sum(contains(afunc_bold_files, '3ME')) > 1
     end
     
 end
-%% Three conditions
-% 1) second echo images
-% 2) optimally combined
-% 3) optimally combeind + ICA (denoised)
+
 %% AFTER TEDANA
 % Distortion correction 
 %% add fsl path 
