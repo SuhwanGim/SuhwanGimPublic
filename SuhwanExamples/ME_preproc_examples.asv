@@ -1,7 +1,6 @@
 %% ADDpath
 addpath(genpath('/Users/suhwan/Dropbox/github/CanlabTools'))
-addpath(genpath('/Users/suhwan/Dropbox/github/CocoanTools/cocoanCORE'));
-addpath(genpath('/Users/suhwan/Dropbox/github/CocoanTools/humanfmri_preproc_bids'));
+addpath(genpath('/Users/suhwan/Dropbox/github/CocoanTools/cocoanCORE'))
 addpath(genpath('/Users/suhwan/Dropbox/github/external_toolbox/spm12'))
 addpath(genpath('/Users/suhwan/Dropbox/github/external_toolbox/spm12_updates_r7487'))
 addpath(genpath('/Users/suhwan/Dropbox/Projects/SEMIC2/scripts/mediation_dream_toolbox'))
@@ -399,13 +398,13 @@ for top_i = 1:numel(topup_unwarped_png)
 end
 close all;
 %% Applying topup on BOLD files
-combined_bold_files{1} = rafunc_bold_files{1}{1};
+combined_bold_files{1} = rafunc_bold_files{1};
 combined_bold_files{2} = combined_bold_files1{1};
 combined_bold_files{3} = combined_bold_files2{1};
 dcr_func_bold_files = [];
 for i = 1:length(combined_bold_files)
     
-    input_dat = combined_bold_files{i};
+    input_dat = combined_bold_files{i}{1};
     [a, b] = fileparts(input_dat);
     dcr_func_bold_files{i,1} = fullfile(a, ['dc' b '.nii']);
     system(['applytopup --imain=', input_dat, ' --inindex=1 --topup=', topup_out, ' --datain=', dc_param, ...
@@ -448,14 +447,17 @@ for i =1:length(dcr_func_bold_files)
 end
 %% Coregister
 use_dc = true;
+%use_sbref = true;
 dcrafunc_bold_files = []; 
-sub_i = 1;
-t1_files = filenames(fullfile(subjanatdir{sub_i}{1},'*.nii'),'char');
-
-for i = 1:length(dcr_func_bold_files)
+%dcrafunc_sbref_files = filenames(fullfile(niiFolder,'*CMRR_2*','dc_*CMRR*mb4_SBRef_4D.nii'));
+t1_files = fullfile(niiFolder, 'T1_MPRAGE_SAG_0_7ISO_0008','20210821134827_T1_mprage_sag_0.7iso_8.nii');
+t1_files = '/Users/suhwan/Dropbox/Projects/sync_SEP/data/coil_test/20210821_multi_echo_RAs/GEONWOO_ME_TEST/preprocessed/T1_MPRAGE_SAG_0_7ISO_0008/20210821134827_T1_mprage_sag_0.7iso_8.nii';
+t1_files  = '/Users/suhwan/Dropbox/Projects/sync_SEP/data/coil_test/20210726_ME/results_nii/T1_MPRAGE_SAG_0_7ISO_0012/T1_mprage_sag_0_7iso.nii';
+%t1_files = '/Users/suhwan/Dropbox/Projects/sync_SEP/data/coil_test/JIHOON2_JIHOON2/results_nii/T1_MPRAGE_SAG_0_7ISO_0008/T1_mprage_sag_0_7iso.nii'; % 64-ch full coil
+for i = 1:length(rafunc_bold_files)
 %     [a,b,c] = fileparts(rafunc_bold_files{i});
 %     dcrafunc_bold_files{i} = fullfile(a,['dc' b c]);
-    dcrafunc_bold_files{i} = dcr_func_bold_files{i};
+    dcrafunc_bold_files{i} = dcr_opt_func_bold_files{i};
     matlabbatch = []; 
     def = spm_get_defaults('coreg');
     %matlabbatch{1}.spm.spatial.coreg.estimate.ref = dcrafunc_sbref_files(i);
@@ -467,14 +469,16 @@ for i = 1:length(dcr_func_bold_files)
     spm_jobman('run', {matlabbatch});
     
 end
-%spm_check_registration(t1_files, [dcrafunc_bold_files{i} ', 1']);
+%spm_check_registration(t1_files, dcrafunc_bold_files{i});
+%%
+temp_t = fmri_data(dcrafunc_bold_files{1},dcrafunc_bold_files{1});
 
 %% Normalization
 matlabbatch = [];
 
 load(which('segment_job.mat'));
 
-%for j = 1:length(dcrafunc_bold_files)
+%for i = 1:length(dcrafunc_bold_files)
 for j = 1:6
     matlabbatch{1}.spm.spatial.preproc.tissue(j).tpm{1} = [which('TPM.nii') ',' num2str(j)];
 end
@@ -514,6 +518,7 @@ spm_jobman('initcfg');
 spm_jobman('run', {matlabbatch});
 
 %%
+%wdcrafunc_bold_files = filenames(fullfile(niiFolder,'*CMRR_2*','wdcra*CMRR*mb4_4D.nii'));
 wdcrfunc_bold_files  = []; 
 for i = 1:length(dcrafunc_bold_files)
     [a,b,c] = fileparts(dcrafunc_bold_files{i});
@@ -523,6 +528,7 @@ spm_check_registration(which('gray_matter_mask.nii'), [wdcrfunc_bold_files{1} ',
 
 %% Smoothing
 fwhm = 5; % default fwhm
+%wdcrafunc_bold_files = filenames(fullfile(niiFolder,'*CMRR_2*','wdcra*CMRR*mb4_4D.nii'));
 matlabbatch = {};
 matlabbatch{1}.spm.spatial.smooth.prefix = 's';
 matlabbatch{1}.spm.spatial.smooth.dtype = 0; % data type; 0 = same as before
@@ -543,6 +549,7 @@ for i = 1:length(dcrafunc_bold_files)
     swdcrfunc_bold_files{i} = fullfile(a,[sprintf('s%s',b) c]);
 end
 
+%swdcrafunc_bold_files = filenames(fullfile(niiFolder,'*CMRR_2*','swdcra*CMRR*mb4_4D.nii'));
 temp_dat = fmri_data(swdcrfunc_bold_files{1},which('gray_matter_mask.nii'));
 temp_dat2 = fmri_data(swdcrfunc_bold_files{2},which('gray_matter_mask.nii'));
 
