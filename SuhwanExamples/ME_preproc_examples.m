@@ -519,7 +519,7 @@ for i = 1:length(dcrafunc_bold_files)
     [a,b,c] = fileparts(dcrafunc_bold_files{i});
     wdcrfunc_bold_files{i} =fullfile(a,[sprintf('w%s',b) c]);
 end
-spm_check_registration(which('gray_matter_mask.nii'), [wdcrfunc_bold_files{1} ',1']);
+spm_check_registration(which('gray_matter_mask.nii'), [wdcrfunc_bold_files{3} ',1']);
 
 %% Smoothing
 fwhm = 5; % default fwhm
@@ -534,17 +534,20 @@ run_num = [];
 spm('defaults','fmri');
 spm_jobman('initcfg');
 spm_jobman('run', matlabbatch);
-%%
-spm_check_registration(which('gray_matter_mask.nii'), [swdcrfunc_bold_files{1} ',1']);
+
 %%
 swdcrafunc_bold_files = [];
 for i = 1:length(dcrafunc_bold_files)
     [a,b,c] = fileparts(wdcrfunc_bold_files{i});
     swdcrfunc_bold_files{i} = fullfile(a,[sprintf('s%s',b) c]);
 end
-
+%%
+spm_check_registration(which('gray_matter_mask.nii'), [swdcrfunc_bold_files{3} ',1']);
+%%
 temp_dat = fmri_data(swdcrfunc_bold_files{1},which('gray_matter_mask.nii'));
 temp_dat2 = fmri_data(swdcrfunc_bold_files{2},which('gray_matter_mask.nii'));
+temp_dat3 = fmri_data(swdcrfunc_bold_files{3},which('gray_matter_mask.nii'));
+
 
 %%
 plot(temp_dat2)
