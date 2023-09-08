@@ -1,4 +1,4 @@
-function out_obj = network_coding(fmri_obj_path,mask)
+function [out_obj,dat_obj] = network_coding(fmri_obj_path,mask)
 % 
 %
 % :: Usage
@@ -93,8 +93,9 @@ end
 %orthviews_multiple_objs({burkner7 fmri_obj});
 
 %% output
-out_obj = fmri_obj;
-out_obj.dat = conj_dat;
+dat_obj = fmri_obj; %input
+out_obj = dat_obj;
+out_obj.dat = conj_dat; %results
 
 end
 
